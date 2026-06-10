@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline PDF Splitter</title>
+    
+    <!-- Using ArvanCloud CDN for offline/browser PDF processing -->
+    <script src="https://lib.arvancloud.ir/pdf-lib/1.9.0/pdf-lib.min.js"></script>
+
+    <style>
+        :root {
+            --bg-main: #1e1e1e;
+            --bg-panel: #252526;
+            --text-main: #ffffff;
+            --text-muted: #aaaaaa;
+            --accent: #007acc;
+            --accent-hover: #0098ff;
+            --success: #238636;
+            --success-hover: #2ea043;
+            --warning: #b8860b;
+            --warning-hover: #daa520;
+            --border: #333333;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: var(--bg-panel);
+            width: 100%;
+            max-width: 600px;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            padding: 30px;
+            border: 1px solid var(--border);
+        }
+
+        h1 { margin-top: 0; font-size: 22px; color: var(--accent); text-align: center; margin-bottom: 5px; }
+        p.subtitle { text-align: center; color: var(--text-muted); font-size: 14px; margin-bottom: 25px; }
+
+        .tabs { 
+            display: flex; 
+            margin-bottom: 20px; 
+            border-bottom: 1px solid var(--border); 
+        }
+        .tab { 
+            flex: 1; 
+            text-align: center; 
+            padding: 10px; 
+            cursor: pointer; 
+            color: var(--text-muted); 
+            font-weight: bold; 
+            transition: 0.2s; 
+        }
+        .tab.active { 
+            color: var(--accent); 
+            border-bottom: 3px solid var(--accent); 
+        }
+        .tab:hover:not(.active) { color: #fff; }
+
+        .settings-group { 
+            display: none; 
+            align-items: center; 
+            justify-content: center; 
+            gap: 10px; 
+            margin-bottom: 25px; 
+            background: #1a1a1a; 
+            padding: 15px; 
+            border-radius: 6px; 
+            border: 1px solid var(--border); 
+        }
+        .settings-group.active { display: flex; }
+        .settings-group label { font-weight: bold; font-size: 14px; }
+        .settings-group input { 
+            background: #333; 
+            border: 1px solid #555; 
+            color: #fff; 
+            padding: 8px; 
+            border-radius: 4px; 
+            width: 80px; 
+            text-align: center; 
+            font-weight: bold; 
+        }
+
+        .drop-zone { 
+            border: 2px dashed #555; 
+            border-radius: 8px; 
+            padding: 40px 20px; 
+            text-align: center; 
+            cursor: pointer; 
+            transition: all 0.2s ease; 
+            background-color: rgba(0, 0, 0, 0.2); 
+            margin-bottom: 20px; 
+        }
+        .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background-color: rgba(0, 122, 204, 0.1); }
+        .drop-zone.disabled { opacity: 0.5; cursor: not-allowed; border-color: #555 !important; background-color: rgba(0, 0, 0, 0.2) !important; }
+        .drop-zone svg { width: 50px; height: 50px; fill: var(--accent); margin-bottom: 15px; }
+        .drop-zone input[type="file"] { display: none; }
+
+        .progress-container { display: none; margin-top: 20px; }
+        .progress-bar-bg { background-color: #333; border-radius: 4px; height: 12px; width: 100%; overflow: hidden; margin-bottom: 10px; }
+        .progress-bar-fill { height: 100%; background-color: var(--accent); width: 0%; transition: width 0.2s ease; }
+        .status-text { text-align: center; font-size: 13px; color: var(--text-muted); }
+
+        .parts-container { margin-top: 25px; display: flex; flex-direction: column; gap: 10px; }
+        .download-btn { display: flex; justify-content: space-between; align-items: center; background-color: var(--success); color: white; text-decoration: none; padding: 12px 20px; border-radius: 6px; font-weight: bold; font-size: 14px; transition: background 0.2s; }
+        .download-btn:hover { background-color: var(--success-hover); }
+        .download-btn.warning { background-color: var(--warning); }
+        .download-btn.warning:hover { background-color: var(--warning-hover); }
+        .size-badge { background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        
+        /* Styling for the error command box */
+        .error-box {
+            background-color: rgba(184, 134, 11, 0.1);
+            border: 1px solid var(--warning);
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+        .error-box h4 { color: var(--warning); margin-top: 0; margin-bottom: 10px; }
+        .error-box p { font-size: 13px; margin-bottom: 10px; color: var(--text-muted); margin-top: 0; }
+        .error-code {
+            background: #111;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            font-family: monospace;
+            font-size: 12px;
+            color: #0f0;
+            word-wrap: break-word;
+            user-select: all; /* Makes it easily copyable */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>✂️ Offline PDF Splitter</h1>
+        <p class="subtitle">Split by File Size or Page Count</p>
+
+        <!-- Mode Selection Tabs -->
+        <div class="tabs">
+            <div class="tab active" id="tab-size" onclick="switchTab('size')">Split by Size (MB)</div>
+            <div class="tab" id="tab-pages" onclick="switchTab('pages')">Split by Page Count</div>
+        </div>
+
+        <!-- Size Settings -->
+        <div class="settings-group active" id="setting-size">
+            <label for="target-size">Max Size per Chunk (MB):</label>
+            <input type="number" id="target-size" value="19" min="0.1" max="500" step="0.1">
+        </div>
+
+        <!-- Page Settings -->
+        <div class="settings-group" id="setting-pages">
+            <label for="target-pages">Pages per Chunk:</label>
+            <input type="number" id="target-pages" value="50" min="1" max="5000" step="1">
+        </div>
+
+        <div class="drop-zone" id="drop-zone">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6C4.9 2 4.01 2.9 4.01 4L4 20C4 21.1 4.89 22 5.99 22H18C19.1 22 20 21.1 20 20V8L14 2ZM18 20H6V4H13V9H18V20ZM12 11V16.59L9.71 14.29L8.29 15.71L12 19.41L15.71 15.71L14.29 14.29L12 16.59V11Z"/></svg>
+            <h3>Drag & Drop your PDF here</h3>
+            <p style="color: var(--text-muted); font-size: 13px;">Or click to browse files</p>
+            <input type="file" id="file-input" accept=".pdf">
+        </div>
+
+        <div class="progress-container" id="progress-container">
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill"></div></div>
+            <div class="status-text" id="status-text">Processing...</div>
+        </div>
+
+        <div class="parts-container" id="parts-list"></div>
+    </div>
+
+    <script>
+        let splitMode = 'size'; // 'size' or 'pages'
+        
+        function switchTab(mode) {
+            if (isProcessing) return;
+            splitMode = mode;
+            
+            // Toggle Tab styling
+            document.getElementById('tab-size').classList.toggle('active', mode === 'size');
+            document.getElementById('tab-pages').classList.toggle('active', mode === 'pages');
+            
+            // Toggle Settings visibility
+            document.getElementById('setting-size').classList.toggle('active', mode === 'size');
+            document.getElementById('setting-pages').classList.toggle('active', mode === 'pages');
+        }
+
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const progressContainer = document.getElementById('progress-container');
+        const progressFill = document.getElementById('progress-fill');
+        const statusText = document.getElementById('status-text');
+        const partsList = document.getElementById('parts-list');
+
+        let isProcessing = false;
+        let objectURLs = []; 
+
+        const yieldToUI = () => new Promise(r => setTimeout(r, 0));
+
+        dropZone.addEventListener('click', () => { if (!isProcessing) fileInput.click(); });
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); if (!isProcessing) dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => { 
+            e.preventDefault(); 
+            dropZone.classList.remove('dragover'); 
+            if (!isProcessing && e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]); 
+        });
+        fileInput.addEventListener('change', (e) => { 
+            if (!isProcessing && e.target.files.length > 0) handleFile(e.target.files[0]); 
+        });
+
+        async function handleFile(file) {
+            if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { 
+                alert('Please upload a valid PDF file.'); 
+                return; 
+            }
+            if (typeof PDFLib === 'undefined') { 
+                alert('PDF library is not loaded. Please check your internet connection to the CDN.'); 
+                return; 
+            }
+
+            isProcessing = true;
+            dropZone.classList.add('disabled');
+            
+            // Cleanup memory
+            objectURLs.forEach(url => URL.revokeObjectURL(url));
+            objectURLs = [];
+            partsList.innerHTML = '';
+            
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '0%';
+            statusText.innerText = 'Loading PDF into memory...';
+            await yieldToUI();
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const sourceDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                const totalPages = sourceDoc.getPageCount();
+
+                if (splitMode === 'size') {
+                    await processBySize(sourceDoc, totalPages, file.name);
+                } else {
+                    await processByPages(sourceDoc, totalPages, file.name);
+                }
+
+            } catch (error) {
+                console.error("PDF Processing Error:", error);
+                
+                if (error.message && error.message.toLowerCase().includes('encrypted')) {
+                    statusText.innerText = '❌ Error: The PDF is encrypted or password protected.';
+                    alert('Cannot process encrypted PDFs. Please unlock it first.');
+                } else {
+                    statusText.innerText = '❌ An error occurred processing the PDF.';
+                    
+                    // Prepare the Ghostscript command for the original whole file
+                    const gsCommand = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dNOPAUSE -dQUIET -dBATCH -sOutputFile="Compressed_${file.name}" "${file.name}"`;
+
+                    // Generate a visually distinct error box with the copyable command
+                    const errorBox = document.createElement('div');
+                    errorBox.className = 'error-box';
+                    errorBox.innerHTML = `
+                        <h4>⚠️ Processing Failed</h4>
+                        <p>The PDF structure might be unsupported, corrupted, or contain un-splittable objects. Try optimizing and flattening the <b>original file</b> using Ghostscript before splitting.</p>
+                        <p>Run the following command in your terminal:</p>
+                        <div class="error-code">${gsCommand}</div>
+                    `;
+                    
+                    partsList.innerHTML = ''; // clear any parts that might have been processed
+                    partsList.appendChild(errorBox);
+                }
+            } finally {
+                isProcessing = false;
+                dropZone.classList.remove('disabled');
+                fileInput.value = ''; 
+            }
+        }
+
+        // ==========================================
+        // MODE 1: SPLIT BY STRICT PAGE COUNT
+        // ==========================================
+        async function processByPages(sourceDoc, totalPages, originalName) {
+            const pagesPerChunk = parseInt(document.getElementById('target-pages').value);
+            if (isNaN(pagesPerChunk) || pagesPerChunk <= 0) throw new Error("Invalid page count");
+
+            let startIndex = 0;
+            let partNumber = 1;
+
+            while (startIndex < totalPages) {
+                let endIndex = Math.min(startIndex + pagesPerChunk - 1, totalPages - 1);
+                statusText.innerText = `Extracting Part ${partNumber} (Pages ${startIndex + 1} to ${endIndex + 1})...`;
+                await yieldToUI();
+
+                const tempDoc = await PDFLib.PDFDocument.create();
+                const indices = [];
+                for(let j = startIndex; j <= endIndex; j++) indices.push(j);
+                
+                const copiedPages = await tempDoc.copyPages(sourceDoc, indices);
+                copiedPages.forEach(p => tempDoc.addPage(p));
+                
+                const pdfBytes = await tempDoc.save();
+                addDownloadButton(pdfBytes, partNumber, originalName, false);
+
+                partNumber++;
+                startIndex = endIndex + 1;
+
+                progressFill.style.width = Math.round((startIndex / totalPages) * 100) + '%';
+                await yieldToUI();
+            }
+            statusText.innerText = `✅ Splitting complete! Generated ${partNumber - 1} part(s).`;
+        }
+
+        // ==========================================
+        // MODE 2: SPLIT BY FILE SIZE (RESOURCE AWARE)
+        // ==========================================
+        async function processBySize(sourceDoc, totalPages, originalName) {
+            const maxMb = parseFloat(document.getElementById('target-size').value);
+            if (isNaN(maxMb) || maxMb <= 0) throw new Error("Invalid size");
+            const targetBytes = maxMb * 1024 * 1024;
+
+            let startIndex = 0;
+            let partNumber = 1;
+
+            while (startIndex < totalPages) {
+                statusText.innerText = `Analyzing base size for Part ${partNumber}... (Page ${startIndex + 1})`;
+                await yieldToUI();
+
+                const tempDocSingle = await PDFLib.PDFDocument.create();
+                const copiedSingle = await tempDocSingle.copyPages(sourceDoc, [startIndex]);
+                tempDocSingle.addPage(copiedSingle[0]);
+                const singleBytes = await tempDocSingle.save();
+                const singlePageSize = singleBytes.byteLength;
+
+                let allowedBytes = targetBytes;
+                
+                // If 1 page is larger than target, adjust limit to prevent infinite loops / duplicated giant parts
+                if (singlePageSize > targetBytes) {
+                    allowedBytes = singlePageSize + (2 * 1024 * 1024); 
+                }
+
+                let low = startIndex, high = totalPages - 1, bestEnd = startIndex, bestBytes = singleBytes;
+
+                while (low <= high) {
+                    let mid = Math.floor((low + high) / 2);
+                    if (mid === startIndex) {
+                        if (singlePageSize <= allowedBytes) { 
+                            bestEnd = mid; bestBytes = singleBytes; low = mid + 1; 
+                        } else { 
+                            break; 
+                        }
+                        continue;
+                    }
+
+                    statusText.innerText = `Testing optimal split for Part ${partNumber} (Pages ${startIndex + 1} to ${mid + 1})...`;
+                    await yieldToUI();
+
+                    const tempDoc = await PDFLib.PDFDocument.create();
+                    const indices = [];
+                    for(let j = startIndex; j <= mid; j++) indices.push(j);
+                    const copiedPages = await tempDoc.copyPages(sourceDoc, indices);
+                    copiedPages.forEach(p => tempDoc.addPage(p));
+                    
+                    const pdfBytes = await tempDoc.save();
+                    
+                    if (pdfBytes.byteLength <= allowedBytes) {
+                        bestEnd = mid; bestBytes = pdfBytes; low = mid + 1; 
+                    } else {
+                        high = mid - 1; 
+                    }
+                }
+
+                const isOversized = bestBytes.byteLength > targetBytes + (100 * 1024); // Give it a tiny 100kb buffer
+                addDownloadButton(bestBytes, partNumber, originalName, isOversized);
+                
+                partNumber++;
+                startIndex = bestEnd + 1;
+                progressFill.style.width = Math.round((startIndex / totalPages) * 100) + '%';
+                await yieldToUI();
+            }
+            statusText.innerText = `✅ Splitting complete! Generated ${partNumber - 1} part(s).`;
+        }
+
+        // ==========================================
+        // UI: ADD DOWNLOAD BUTTON
+        // ==========================================
+        function addDownloadButton(bytes, partNumber, originalName, isOversized) {
+            const blob = new Blob([bytes], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            objectURLs.push(url); 
+            
+            const sizeMB = (bytes.byteLength / (1024 * 1024)).toFixed(2);
+            const cleanName = originalName.replace(/\.[^/.]+$/, "");
+            
+            const btnContainer = document.createElement('div');
+            btnContainer.style.display = 'flex';
+            btnContainer.style.flexDirection = 'column';
+            btnContainer.style.gap = '5px';
+            btnContainer.style.marginBottom = '15px';
+
+            const btn = document.createElement('a');
+            btn.href = url;
+            btn.download = `${cleanName}_Part_${partNumber}.pdf`;
+            btn.className = 'download-btn';
+            
+            if (isOversized) btn.classList.add('warning');
+            
+            btn.innerHTML = `⬇️ Save Part ${partNumber} <span class="size-badge">${sizeMB} MB</span>`;
+            
+            btnContainer.appendChild(btn);
+
+            if (isOversized) {
+                const warn = document.createElement('div');
+                warn.className = 'error-box';
+                warn.style.marginTop = '5px';
+                
+                // Construct command for the ORIGINAL whole file as requested
+                const gsCommand = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/printer -dNOPAUSE -dQUIET -dBATCH -sOutputFile="Compressed_${originalName}" "${originalName}"`;
+
+                warn.innerHTML = `
+                    <h4 style="font-size: 13px; margin-bottom: 5px;">⚠️ Target Size Exceeded</h4>
+                    <p>The base resources in this part are inherently larger than your target size limit.</p>
+                    <p>Try compressing the <b>original file</b> first by running this command, then upload the newly compressed version:</p>
+                    <div class="error-code">${gsCommand}</div>
+                `;
+                btnContainer.appendChild(warn);
+            }
+
+            partsList.appendChild(btnContainer);
+        }
+    </script>
+</body>
+</html>
